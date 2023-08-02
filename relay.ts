@@ -15,9 +15,13 @@ type RelayEvent = {
 export type CountPayload = {
   count: number
 }
+export type TopPayload = {
+  ids: string[]
+}
 type SubEvent<K extends number> = {
   event: (event: Event<K>) => void | Promise<void>
   count: (payload: CountPayload) => void | Promise<void>
+  top: (payload: TopPayload) => void | Promise<void>
   eose: () => void | Promise<void>
 }
 export type Relay = {
@@ -41,6 +45,10 @@ export type Relay = {
     filters: Filter[],
     opts?: SubscriptionOptions
   ) => Promise<CountPayload | null>
+  top: (
+    filters: Filter[],
+    opts?: SubscriptionOptions
+  ) => Promise<TopPayload | null>
   publish: (event: Event<number>) => Promise<void>
   auth: (event: Event<number>) => Promise<void>
   off: <T extends keyof RelayEvent, U extends RelayEvent[T]>(
@@ -70,7 +78,7 @@ export type Sub<K extends number = number> = {
 
 export type SubscriptionOptions = {
   id?: string
-  verb?: 'REQ' | 'COUNT'
+  verb?: 'REQ' | 'COUNT' | 'TOP'
   skipVerification?: boolean
   alreadyHaveEvent?: null | ((id: string, relay: string) => boolean)
 }
@@ -89,9 +97,10 @@ export function relayInit(
     getTimeout?: number
     listTimeout?: number
     countTimeout?: number
+    topTimeout?: number
   } = {}
 ): Relay {
-  let {listTimeout = 3000, getTimeout = 3000, countTimeout = 3000} = options
+  let {listTimeout = 3000, getTimeout = 3000, countTimeout = 3000, topTimeout = 3000} = options
 
   var ws: WebSocket
   var openSubs: {[id: string]: {filters: Filter[]} & SubscriptionOptions} = {}
@@ -183,13 +192,22 @@ export function relayInit(
               }
               return
             }
-            case 'COUNT':
+            case 'COUNT': {
               let id = data[1]
               let payload = data[2]
               if (openSubs[id]) {
                 ;(subListeners[id]?.count || []).forEach(cb => cb(payload))
               }
               return
+	    }
+            case 'TOP': {
+              let id = data[1]
+              let payload = data[2]
+              if (openSubs[id]) {
+                ;(subListeners[id]?.top || []).forEach(cb => cb(payload))
+              }
+              return
+	    }
             case 'EOSE': {
               let id = data[1]
               if (id in subListeners) {
@@ -287,6 +305,7 @@ export function relayInit(
         subListeners[subid] = subListeners[subid] || {
           event: [],
           count: [],
+          top: [],
           eose: []
         }
         subListeners[subid][type].push(cb)
@@ -370,6 +389,19 @@ export function relayInit(
           resolve(null)
         }, countTimeout)
         s.on('count', (event: CountPayload) => {
+          s.unsub()
+          clearTimeout(timeout)
+          resolve(event)
+        })
+      }),
+    top: (filters: Filter[]): Promise<TopPayload | null> =>
+      new Promise(resolve => {
+        let s = sub(filters, {...sub, verb: 'TOP'})
+        let timeout = setTimeout(() => {
+          s.unsub()
+          resolve(null)
+        }, topTimeout)
+        s.on('top', (event: TopPayload) => {
           s.unsub()
           clearTimeout(timeout)
           resolve(event)
