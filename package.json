@@ -1,6 +1,6 @@
 {
   "name": "@nostrband/nostr-tools",
-  "version": "1.14.0",
+  "version": "1.14.1",
   "description": "Tools for making a Nostr client, extension by NostrBand",
   "repository": {
     "type": "git",
